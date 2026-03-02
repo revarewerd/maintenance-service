@@ -41,9 +41,8 @@ case class MaintenanceEventProducerLive(
       json
     )
 
-    Producer.produce(record, Serde.string, Serde.string)
+    producer.produce(record, Serde.string, Serde.string).unit
       .tap(_ => ZIO.logDebug(s"Опубликовано событие ТО: ${event.getClass.getSimpleName}, key=$key"))
-      .unit
       .catchAll(err => ZIO.logError(s"Ошибка публикации в Kafka: $err"))
 
 object MaintenanceEventProducerLive:

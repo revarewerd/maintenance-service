@@ -38,13 +38,13 @@ object MaintenanceRoutes:
 
   type Env = MaintenanceService
 
-  val routes: Routes[Env, Nothing] = Routes(
+  val routes: Routes[Env, Response] = Routes(
     // ---- Шаблоны ТО ----
 
     // GET /api/v1/templates?vehicleType=truck
     Method.GET / "api" / "v1" / "templates" -> handler { (req: Request) =>
       val companyId = extractCompanyId(req)
-      val vehicleType = req.url.queryParams.get("vehicleType").flatMap(_.headOption)
+      val vehicleType = req.url.queryParams.get("vehicleType")
       MaintenanceService.listTemplates(companyId, vehicleType)
         .map(templates => Response.json(templates.toJson))
         .catchAll(handleError)
@@ -160,8 +160,8 @@ object MaintenanceRoutes:
 
     // GET /api/v1/vehicles/:id/services?limit=20&offset=0
     Method.GET / "api" / "v1" / "vehicles" / string("vehicleId") / "services" -> handler { (vehicleId: String, req: Request) =>
-      val limit  = req.url.queryParams.get("limit").flatMap(_.headOption).flatMap(_.toIntOption).getOrElse(20)
-      val offset = req.url.queryParams.get("offset").flatMap(_.headOption).flatMap(_.toIntOption).getOrElse(0)
+      val limit  = req.url.queryParams.get("limit").flatMap(_.toIntOption).getOrElse(20)
+      val offset = req.url.queryParams.get("offset").flatMap(_.toIntOption).getOrElse(0)
       (for {
         uuid    <- parseUUID(vehicleId)
         history <- MaintenanceService.getServiceHistory(uuid, limit, offset)
@@ -195,14 +195,14 @@ object MaintenanceRoutes:
 
   /** Извлечение companyId из заголовка (будет из JWT через API Gateway) */
   private def extractCompanyId(req: Request): UUID =
-    req.header("X-Company-Id")
-      .flatMap(h => scala.util.Try(UUID.fromString(h.renderedValue)).toOption)
+    req.headers.get("X-Company-Id")
+      .flatMap(v => scala.util.Try(UUID.fromString(v)).toOption)
       .getOrElse(UUID.nameUUIDFromBytes("default-company".getBytes))
 
   /** Извлечение userId из заголовка */
   private def extractUserId(req: Request): UUID =
-    req.header("X-User-Id")
-      .flatMap(h => scala.util.Try(UUID.fromString(h.renderedValue)).toOption)
+    req.headers.get("X-User-Id")
+      .flatMap(v => scala.util.Try(UUID.fromString(v)).toOption)
       .getOrElse(UUID.nameUUIDFromBytes("default-user".getBytes))
 
   /** Парсинг UUID из строки */

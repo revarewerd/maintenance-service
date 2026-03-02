@@ -7,6 +7,8 @@ lazy val root = project
     version := "0.1.0",
     scalaVersion := scala3Version,
 
+    scalacOptions ++= Seq("-Xmax-inlines", "64"),
+
     // ============================================
     // Зависимости
     // ============================================
@@ -27,14 +29,12 @@ lazy val root = project
       "dev.zio" %% "zio-config-magnolia" % "4.0.0-RC16",
 
       // Kafka
-      "dev.zio" %% "zio-kafka"           % "2.2.0",
-
-      // Redis
-      "dev.zio" %% "zio-redis"           % "1.0.0-RC1",
+      "dev.zio" %% "zio-kafka"           % "2.7.3",
 
       // Database (Doobie)
-      "org.tpolecat" %% "doobie-core"    % "1.0.0-RC4",
-      "org.tpolecat" %% "doobie-hikari"  % "1.0.0-RC4",
+      "org.tpolecat" %% "doobie-core"     % "1.0.0-RC4",
+      "org.tpolecat" %% "doobie-hikari"   % "1.0.0-RC4",
+      "org.tpolecat" %% "doobie-postgres" % "1.0.0-RC4",
       "dev.zio" %% "zio-interop-cats"    % "23.1.0.0",
 
       // PostgreSQL

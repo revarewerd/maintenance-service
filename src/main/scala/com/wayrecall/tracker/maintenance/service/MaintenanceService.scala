@@ -148,15 +148,14 @@ case class MaintenanceServiceLive(
   // ---- Записи о ТО ----
 
   override def recordService(userId: UUID, request: RecordServiceRequest): Task[ServiceRecord] =
-    for {
-      now = Instant.now()
-      recordId = UUID.randomUUID()
-      items = request.items.map { item =>
-        ServiceItemRecord(UUID.randomUUID(), recordId, item.name, item.partNumber, item.quantity, item.costRub, item.notes)
-      }
-      // Определяем companyId из расписания или из vehicleId (TODO: lookup)
-      companyId = UUID.nameUUIDFromBytes(s"company-default".getBytes) // Placeholder
-      record = ServiceRecord(
+    val now = Instant.now()
+    val recordId = UUID.randomUUID()
+    val items = request.items.map { item =>
+      ServiceItemRecord(UUID.randomUUID(), recordId, item.name, item.partNumber, item.quantity, item.costRub, item.notes)
+    }
+    // Определяем companyId из расписания или из vehicleId (TODO: lookup)
+    val companyId = UUID.nameUUIDFromBytes(s"company-default".getBytes) // Placeholder
+    val record = ServiceRecord(
         id = recordId, companyId = companyId, vehicleId = request.vehicleId,
         scheduleId = request.scheduleId, serviceType = request.serviceType,
         description = request.description, mileageKm = request.mileageKm,
@@ -168,12 +167,14 @@ case class MaintenanceServiceLive(
         nextServiceDate = request.nextServiceDate,
         createdBy = userId, createdAt = now, updatedAt = now
       )
+    for {
       _ <- serviceRecordRepo.create(record)
 
       // Обновляем расписание если привязано
-      _ <- request.scheduleId match
+      _ <- (request.scheduleId match
         case Some(sid) => planner.updateScheduleAfterService(sid, record)
         case None      => ZIO.unit
+      )
 
       // Публикуем событие
       _ <- producer.publish(MaintenanceEvent.ServiceCompleted(

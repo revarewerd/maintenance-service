@@ -28,15 +28,14 @@ object MileageConsumer:
       mileageTracker <- ZIO.service[MileageTracker]
       _              <- ZIO.logInfo(s"Запуск MileageConsumer: топик=${config.gpsTopic}, группа=${config.consumerGroup}")
       _              <- Consumer
-                          .subscribeAnd(Subscription.topics(config.gpsTopic))
-                          .plainStream(Serde.string, Serde.string)
+                          .plainStream(Subscription.topics(config.gpsTopic), Serde.string, Serde.string)
                           .mapZIO { record =>
                             processRecord(record.value, mileageTracker)
                               .catchAll(err =>
                                 ZIO.logError(s"Ошибка обработки GPS события для пробега: $err")
                               )
+                              .as(record.offset)
                           }
-                          .map(_.offset)
                           .aggregateAsync(Consumer.offsetBatches)
                           .mapZIO(_.commit)
                           .runDrain

@@ -1,5 +1,6 @@
 package com.wayrecall.tracker.maintenance.repository
 
+import cats.implicits.*
 import zio.*
 import zio.interop.catz.*
 import doobie.*

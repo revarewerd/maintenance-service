@@ -69,7 +69,7 @@ case class ReminderEngineLive(
     else
       schedule.remainingKm match
         case Some(remaining) if remaining <= thresholdKm && remaining > 0 =>
-          sendReminder(schedule, s"threshold_km_$thresholdKm", level, remaining, None)
+          sendReminder(schedule, s"threshold_km_$thresholdKm", level, Some(remaining), None)
         case _ => ZIO.succeed(None)
 
   /** Проверяет порог по дням */

@@ -46,25 +46,25 @@ case class MileageTrackerLive(
           _ <- if !locked then
                 ZIO.logDebug(s"Блокировка пробега уже захвачена: vehicleId=$vehicleId")
               else
-                processWithLock(vehicleId, event).ensuring(cache.releaseMileageLock(vehicleId))
+                processWithLock(vehicleId, event).ensuring(cache.releaseMileageLock(vehicleId).orDie)
         } yield ()
 
   private def processWithLock(vehicleId: UUID, event: GpsEvent): Task[Unit] =
     for {
       // Обработка одометра
-      _ <- event.odometer match
+      _ <- (event.odometer match
         case Some(odometerMeters) =>
           val mileageKm = odometerMeters / 1000 // Одометр в метрах → км
+          val reading = OdometerReading(
+            id = UUID.randomUUID(),
+            vehicleId = vehicleId,
+            mileageKm = mileageKm,
+            source = "gps",
+            recordedAt = event.timestamp,
+            createdAt = Instant.now()
+          )
           for {
             // Сохраняем показание
-            reading = OdometerReading(
-              id = UUID.randomUUID(),
-              vehicleId = vehicleId,
-              mileageKm = mileageKm,
-              source = "gps",
-              recordedAt = event.timestamp,
-              createdAt = Instant.now()
-            )
             _ <- odometerRepo.saveReading(reading)
             // Обновляем кэш
             _ <- cache.setMileage(vehicleId, mileageKm)
@@ -79,16 +79,18 @@ case class MileageTrackerLive(
             }
           } yield ()
         case None => ZIO.unit
+      )
 
       // Обработка моточасов
-      _ <- event.engineHours match
+      _ <- (event.engineHours match
         case Some(hours) =>
+          val ehReading = EngineHoursReading(vehicleId, hours, "gps", event.timestamp)
           for {
-            ehReading = EngineHoursReading(vehicleId, hours, "gps", event.timestamp)
             _ <- odometerRepo.saveEngineHours(ehReading)
             _ <- scheduleRepo.updateEngineHours(vehicleId, hours, None) // remainingHours считается в IntervalCalculator
           } yield ()
         case None => ZIO.unit
+      )
     } yield ()
 
   override def getCurrentMileage(vehicleId: UUID): Task[Long] =

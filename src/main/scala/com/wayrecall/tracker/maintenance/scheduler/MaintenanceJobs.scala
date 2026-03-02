@@ -72,16 +72,17 @@ case class MaintenanceJobsLive(
       _ <- ZIO.logDebug("Запуск задачи: расчёт суточного пробега")
       // Получаем все активные расписания
       // Для каждого vehicleId берём первое и последнее показание за сегодня
-      today = LocalDate.now()
-      startOfDay = today.atStartOfDay().toInstant(java.time.ZoneOffset.UTC)
-      endOfDay = today.plusDays(1).atStartOfDay().toInstant(java.time.ZoneOffset.UTC)
-      // TODO: Получить уникальные vehicleId из активных расписаний
-      // и сохранить суточный пробег для каждого
+      _  <- ZIO.succeed {
+        val today = LocalDate.now()
+        val startOfDay = today.atStartOfDay().toInstant(java.time.ZoneOffset.UTC)
+        val endOfDay = today.plusDays(1).atStartOfDay().toInstant(java.time.ZoneOffset.UTC)
+        // TODO: Получить уникальные vehicleId из активных расписаний
+        // и сохранить суточный пробег для каждого
+      }
       _ <- ZIO.logDebug("Расчёт суточного пробега завершён")
     } yield ()
 
-    (task.catchAll(err => ZIO.logError(s"Ошибка в dailyMileageJob: $err")) *>
-      ZIO.sleep(24.hours)).forever
+    (task *> ZIO.sleep(24.hours)).forever
 
   /** 4. Ежемесячная очистка старых данных */
   private def cleanupJob: Task[Unit] =
@@ -93,8 +94,7 @@ case class MaintenanceJobsLive(
       _ <- ZIO.logInfo("Ежемесячная очистка завершена")
     } yield ()
 
-    (task.catchAll(err => ZIO.logError(s"Ошибка в cleanupJob: $err")) *>
-      ZIO.sleep(30.days)).forever
+    (task *> ZIO.sleep(30.days)).forever
 
 object MaintenanceJobsLive:
   val live: ZLayer[ReminderEngine & ScheduleRepository & OdometerRepository, Nothing, MaintenanceJobs] =

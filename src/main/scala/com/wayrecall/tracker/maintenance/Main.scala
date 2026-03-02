@@ -24,7 +24,47 @@ object Main extends ZIOAppDefault:
   override val bootstrap: ZLayer[ZIOAppArgs, Any, Any] =
     Runtime.removeDefaultLoggers >>> SLF4J.slf4j
 
-  override def run: ZIO[Any, Any, Any] =
+  /**
+   * Слой конфигурации с производными sub-конфигами
+   */
+  private val configLayers =
+    AppConfig.live.flatMap { env =>
+      val config = env.get
+      ZLayer.succeed(config) ++
+      ZLayer.succeed(config.postgres) ++
+      ZLayer.succeed(config.kafka) ++
+      ZLayer.succeed(config.scheduler) ++
+      ZLayer.succeed(config.reminderThresholds)
+    }
+
+  /**
+   * Kafka Consumer layer
+   */
+  private val kafkaConsumerLayer: ZLayer[AppConfig, Throwable, Consumer] =
+    ZLayer.scoped {
+      for {
+        config <- ZIO.service[AppConfig]
+        consumer <- Consumer.make(
+          ConsumerSettings(List(config.kafka.bootstrapServers))
+            .withGroupId(config.kafka.consumerGroup)
+        )
+      } yield consumer
+    }
+
+  /**
+   * Kafka Producer layer
+   */
+  private val kafkaProducerLayer: ZLayer[AppConfig, Throwable, Producer] =
+    ZLayer.scoped {
+      for {
+        config <- ZIO.service[AppConfig]
+        producer <- Producer.make(
+          ProducerSettings(List(config.kafka.bootstrapServers))
+        )
+      } yield producer
+    }
+
+  override def run: ZIO[ZIOAppArgs & Scope, Any, Any] =
     val program = for {
       config <- ZIO.service[AppConfig]
       _      <- ZIO.logInfo(s"=== Maintenance Service запускается на порту ${config.server.port} ===")
@@ -35,50 +75,24 @@ object Main extends ZIOAppDefault:
 
       // Запускаем Kafka consumer для пробега (daemon — в фоне)
       _      <- MileageConsumer.run.forkDaemon
-                  .catchAll(err => ZIO.logError(s"Ошибка запуска Kafka consumer: $err"))
 
       // Собираем маршруты
       allRoutes = HealthRoutes.routes ++ MaintenanceRoutes.routes
 
       // Запускаем HTTP-сервер
-      _      <- Server.serve(allRoutes)
+      _      <- Server.serve(allRoutes.toHttpApp)
     } yield ()
 
     program.provide(
       // Конфигурация
-      AppConfig.live,
-
-      // Извлечение sub-конфигов
-      ZLayer.service[AppConfig].flatMap(env => ZLayer.succeed(env.get.postgres)),
-      ZLayer.service[AppConfig].flatMap(env => ZLayer.succeed(env.get.redis)),
-      ZLayer.service[AppConfig].flatMap(env => ZLayer.succeed(env.get.kafka)),
-      ZLayer.service[AppConfig].flatMap(env => ZLayer.succeed(env.get.scheduler)),
-      ZLayer.service[AppConfig].flatMap(env => ZLayer.succeed(env.get.reminderThresholds)),
+      configLayers,
 
       // БД
       TransactorLayer.live,
 
-      // Redis
-      zio.redis.Redis.local,
-      zio.redis.RedisExecutor.local,
-      zio.redis.CodecSupplier.utf8,
-
-      // Kafka Consumer
-      ZLayer.service[AppConfig].flatMap { env =>
-        val kafkaConfig = env.get.kafka
-        Consumer.make(
-          ConsumerSettings(List(kafkaConfig.bootstrapServers))
-            .withGroupId(kafkaConfig.consumerGroup)
-        ).toLayer
-      },
-
-      // Kafka Producer
-      ZLayer.service[AppConfig].flatMap { env =>
-        val kafkaConfig = env.get.kafka
-        Producer.make(
-          ProducerSettings(List(kafkaConfig.bootstrapServers))
-        ).toLayer
-      },
+      // Kafka
+      kafkaConsumerLayer,
+      kafkaProducerLayer,
 
       // Репозитории
       TemplateRepositoryLive.live,
@@ -86,10 +100,10 @@ object Main extends ZIOAppDefault:
       ServiceRecordRepositoryLive.live,
       OdometerRepositoryLive.live,
 
-      // Кэш
+      // Кэш (in-memory Ref)
       MaintenanceCacheLive.live,
 
-      // Kafka продюсер
+      // Kafka продюсер (бизнес-логика)
       MaintenanceEventProducerLive.live,
 
       // Сервисы (порядок важен из-за зависимостей)
