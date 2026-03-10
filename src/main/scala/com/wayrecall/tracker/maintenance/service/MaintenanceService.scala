@@ -91,6 +91,7 @@ case class MaintenanceServiceLive(
 
   override def updateTemplate(id: UUID, request: CreateTemplateRequest): Task[Unit] =
     for {
+      _ <- ZIO.logInfo(s"ТО: обновление шаблона id=$id, name='${request.name}'")
       existingOpt <- templateRepo.findById(id)
       existing    <- ZIO.fromOption(existingOpt).orElseFail(new RuntimeException(s"Шаблон не найден: $id"))
       updated = existing.copy(
@@ -109,11 +110,13 @@ case class MaintenanceServiceLive(
     } yield ()
 
   override def deleteTemplate(id: UUID): Task[Unit] =
+    ZIO.logInfo(s"ТО: удаление шаблона id=$id") *>
     templateRepo.delete(id)
 
   // ---- Расписания ----
 
   override def createSchedule(companyId: UUID, request: CreateScheduleRequest): Task[MaintenanceSchedule] =
+    ZIO.logInfo(s"ТО: создание расписания для компании=$companyId") *>
     planner.createSchedule(companyId, request)
 
   override def getVehicleSchedules(vehicleId: UUID): Task[List[MaintenanceSchedule]] =
@@ -140,9 +143,11 @@ case class MaintenanceServiceLive(
     )
 
   override def pauseSchedule(scheduleId: UUID): Task[Unit] =
+    ZIO.logInfo(s"ТО: пауза расписания id=$scheduleId") *>
     planner.pauseSchedule(scheduleId)
 
   override def resumeSchedule(scheduleId: UUID): Task[Unit] =
+    ZIO.logInfo(s"ТО: возобновление расписания id=$scheduleId") *>
     planner.resumeSchedule(scheduleId)
 
   // ---- Записи о ТО ----
@@ -196,6 +201,7 @@ case class MaintenanceServiceLive(
 
   override def getCompanyOverview(companyId: UUID): Task[CompanyMaintenanceOverview] =
     for {
+      _ <- ZIO.logDebug(s"ТО: обзор компании=$companyId")
       allSchedules <- scheduleRepo.findActiveByCompany(companyId)
       // Группируем по vehicleId для обзоров
       vehicleIds = allSchedules.map(_.vehicleId).distinct
